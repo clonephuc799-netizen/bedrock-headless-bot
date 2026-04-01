@@ -1,89 +1,69 @@
-const dgram = require('dgram');
+import { createClient } from 'bedrock-protocol';
 
 const HOST = "ben10407.progamer.me";
 const PORT = 43884;
 
-const client = dgram.createSocket('udp4');
-let sequence = 0;
+console.log('=== BEDROCK HEADLESS BOT - ANTI KICK FIXED ===');
+console.log(`Target: ${HOST}:${PORT}`);
 
-console.log('=== RAW BEDROCK BOT - TEST SERVER 1.26.3.1 ===');
-console.log(`Connecting to ${HOST}:${PORT}`);
-
-client.on('message', (msg) => {
-  const hex = msg.toString('hex');
-  console.log(`[RECV] ${hex.slice(0, 100)}${hex.length > 100 ? '...' : ''}`);
-
-  const id = msg[0];
-  if (id === 0x1c) {
-    console.log('[PHASE 1] Pong received → Gửi handshake');
-    sendOpenConnectionRequest1();
-  } else if (id === 0x06) {
-    console.log('[PHASE 2] Reply 1 → Gửi Request 2');
-    sendOpenConnectionRequest2();
-  } else if (id === 0x08) {
-    console.log('[PHASE 2] RakNet connected → Gửi Login');
-    setTimeout(sendLoginPacket, 300);
-  } else if (id >= 0x80) {
-    console.log('[ENCAPSULATED] Nhận packet từ server');
-    if (!sequence) {
-      console.log('[SUCCESS] Giả lập join world thành công!');
-      startMovement();
-    }
-  }
+const client = createClient({
+  host: HOST,
+  port: PORT,
+  username: "HeadlessBot",
+  offline: true,
+  version: "1.26.0",
+  skipValidation: true,
+  connectTimeout: 20000
 });
 
-function sendPacket(data) {
-  client.send(data, PORT, HOST, (err) => {
-    if (err) console.error('[SEND ERROR]', err);
-  });
-}
+client.on('join', () => {
+  console.log('[SUCCESS] Join world thành công!');
+});
 
-function sendOpenConnectionRequest1() {
-  const padding = Buffer.alloc(1400 - 18, 0);
-  const pkt = Buffer.concat([Buffer.from([0x05]), Buffer.from([0x00,0xff,0xff,0x00,0xfe,0xfe,0xfe,0xfe,0xfd,0xfd,0xfd,0xfd,0x12,0x34,0x56,0x78]), Buffer.from([11]), padding]);
-  sendPacket(pkt);
-}
+client.on('spawn', () => {
+  console.log('[SUCCESS] Bot spawn - Bắt đầu di chuyển ổn định (anti-kick)');
+  startAntiKickMovement();
+});
 
-function sendOpenConnectionRequest2() {
-  const addr = Buffer.alloc(7);
-  addr[0] = 4;
-  HOST.split('.').map(Number).forEach((b, i) => addr[1 + i] = b);
-  addr.writeUInt16BE(PORT, 5);
-  const mtu = Buffer.alloc(2); mtu.writeUInt16BE(1400);
-  const guid = Buffer.alloc(8); guid.writeBigUInt64BE(BigInt(Date.now()));
-  const pkt = Buffer.concat([Buffer.from([0x07]), Buffer.from([0x00,0xff,0xff,0x00,0xfe,0xfe,0xfe,0xfe,0xfd,0xfd,0xfd,0xfd,0x12,0x34,0x56,0x78]), addr, mtu, guid]);
-  sendPacket(pkt);
-}
+client.on('disconnect', (packet) => {
+  console.log('[KICK/DISCONNECT]', packet.reason || packet);
+});
 
-function sendLoginPacket() {
-  // Login packet đơn giản cho offline + mod server
-  const login = Buffer.from([0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-  const len = Buffer.alloc(2); len.writeUInt16BE(login.length);
-  const seq = Buffer.alloc(3); seq.writeUIntBE(sequence++, 0, 3);
-  const header = Buffer.concat([Buffer.from([0x80]), seq, Buffer.from([0x00, 0x00]), len]);
-  sendPacket(Buffer.concat([header, login]));
-  console.log('[PHASE 4] Login packet đã gửi');
-}
+client.on('error', (err) => {
+  console.error('[ERROR]', err.message || err);
+});
 
-function startMovement() {
-  console.log('[PHASE 6] Bắt đầu di chuyển loop...');
+// Movement packet đầy đủ + gửi thường xuyên để tránh bị kick
+function startAntiKickMovement() {
+  let tick = 0;
+  let angle = 0;
+
   setInterval(() => {
-    const move = Buffer.from([0x90, 0x00, 0x00, 0x00, 0x00]); // stub movement
-    const len = Buffer.alloc(2); len.writeUInt16BE(move.length);
-    const seq = Buffer.alloc(3); seq.writeUIntBE(sequence++, 0, 3);
-    const header = Buffer.concat([Buffer.from([0x80]), seq, Buffer.from([0x00, 0x00]), len]);
-    sendPacket(Buffer.concat([header, move]));
-    console.log('[MOVEMENT] Gửi movement packet');
-  }, 1000);
+    angle += 0.06;
+
+    const x = 100 + Math.sin(angle) * 5;
+    const z = 100 + Math.cos(angle) * 5;
+
+    client.write('player_auth_input', {
+      pitch: 0,
+      yaw: 90,
+      head_yaw: 90,
+      position: { x: x, y: 70, z: z },
+      move_vector: { x: 0, z: 0 },
+      input_flags: BigInt(0x0000000000000001) | BigInt(0x0000000000000200), // moving + jumping
+      input_mode: 1,
+      play_mode: 0,
+      interaction_model: 0,
+      tick: BigInt(tick++),
+      delta: { x: 0.0, y: 0.0, z: 0.0 },
+      vehicle_rotation: { x: 0, y: 0, z: 0 },
+      analog_move_vector: { x: 0, z: 0 }
+    });
+
+    if (tick % 15 === 0) {
+      console.log(`[MOVEMENT] Tick ${tick} | Pos ~ (${x.toFixed(1)}, ${z.toFixed(1)})`);
+    }
+  }, 600);   // gửi mỗi 0.6 giây
 }
 
-client.bind(() => {
-  console.log('UDP socket bound - Gửi ping đầu tiên...');
-  const ping = Buffer.concat([
-    Buffer.from([0x01]),
-    Buffer.alloc(8, 0), // timestamp
-    Buffer.from([0x00,0xff,0xff,0x00,0xfe,0xfe,0xfe,0xfe,0xfd,0xfd,0xfd,0xfd,0x12,0x34,0x56,0x78]),
-    Buffer.alloc(8)
-  ]);
-  sendPacket(ping);
-});
+console.log('Bot đang chạy... Nếu vẫn kick thì paste log cho tao fix tiếp.');
