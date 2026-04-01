@@ -2,54 +2,92 @@ import { createClient } from 'bedrock-protocol';
 
 const HOST = "ben10407.progamer.me";
 const PORT = 43884;
+const USERNAME = "HeadlessBot";
 
-console.log('=== BEDROCK HEADLESS BOT - FIX VERSION 1.26.3 ===');
-console.log(`Target: ${HOST}:${PORT}`);
+let reconnectCount = 0;
+let movementInterval = null;
 
-const client = createClient({
-  host: HOST,
-  port: PORT,
-  username: "HeadlessBot",
-  offline: true,
-  version: "1.26.0",           // ← DÙNG PHIÊN BẢN GẦN NHẤT ĐƯỢC HỖ TRỢ
-  skipValidation: true,
-  realms: false,
-  connectTimeout: 10000
-});
+console.log('=== BEDROCK HEADLESS BOT - TEST LOOP VÔ HẠN ===');
+console.log(`Server: ${HOST}:${PORT} | Version: 1.26.0 (compat)`);
 
-client.on('join', () => {
-  console.log('[SUCCESS] Đã join world thành công!');
-});
+function startBot() {
+  reconnectCount++;
+  console.log(`\n[RECONNECT #${reconnectCount}] Đang kết nối...`);
 
-client.on('spawn', () => {
-  console.log('[SUCCESS] Bot spawn - Bắt đầu di chuyển');
-  startMovement();
-});
+  const client = createClient({
+    host: HOST,
+    port: PORT,
+    username: USERNAME + (reconnectCount > 1 ? reconnectCount : ''),
+    offline: true,
+    version: "1.26.0",
+    skipValidation: true,
+    connectTimeout: 20000
+  });
 
-client.on('disconnect', (packet) => {
-  console.error('[DISCONNECT]', packet.reason);
-});
+  client.on('join', () => {
+    console.log(`[SUCCESS #${reconnectCount}] Join world thành công!`);
+  });
 
-client.on('error', (err) => {
-  console.error('[ERROR]', err.message || err);
-});
+  client.on('spawn', () => {
+    console.log(`[SUCCESS #${reconnectCount}] Bot spawn - Bắt đầu di chuyển ổn định`);
+    startStableMovement(client);
+  });
 
-function startMovement() {
-  let tick = 0;
-  setInterval(() => {
-    client.write('player_auth_input', {
-      pitch: 0,
-      yaw: 0,
-      position: { x: 100 + Math.sin(tick) * 3, y: 70, z: 100 + Math.cos(tick) * 3 },
-      moveVector: { x: 0, z: 0 },
-      inputFlags: 0x0000000000000001 | 0x0000000000000200,
-      inputMode: 1,
-      playMode: 0,
-      tick: tick++,
-      delta: { x: 0, y: 0, z: 0 }
-    });
-    console.log(`[MOVEMENT] Bot di chuyển tick ${tick}`);
-  }, 800);
+  client.on('disconnect', (packet) => {
+    console.log(`[DISCONNECT #${reconnectCount}] Lý do: ${packet.reason || 'Unknown'}`);
+    if (movementInterval) clearInterval(movementInterval);
+    client.close();
+    setTimeout(startBot, 4000);   // reconnect sau 4 giây
+  });
+
+  client.on('error', (err) => {
+    console.error(`[ERROR #${reconnectCount}]`, err.message || err);
+    if (movementInterval) clearInterval(movementInterval);
+    client.close();
+    setTimeout(startBot, 4000);
+  });
 }
 
-console.log('Bot đang connect lại với version 1.26.0...');
+function startStableMovement(client) {
+  if (movementInterval) clearInterval(movementInterval);
+
+  let tick = 0;
+  let angle = 0;
+
+  movementInterval = setInterval(() => {
+    angle += 0.07;
+    const posX = 100 + Math.sin(angle) * 6;
+    const posZ = 100 + Math.cos(angle) * 6;
+
+    try {
+      client.write('player_auth_input', {
+        pitch: 0,
+        yaw: 0,
+        head_yaw: 0,
+        position: { x: posX, y: 70, z: posZ },
+        move_vector: { x: 0, z: 0 },
+        input_flags: BigInt(0x0000000000000001) | BigInt(0x0000000000000200),
+        input_mode: 1,
+        play_mode: 0,
+        interaction_model: 0,
+        tick: BigInt(tick++),
+        delta: { x: 0, y: 0, z: 0 },
+        vehicle_rotation: { x: 0, y: 0, z: 0 },
+        analog_move_vector: { x: 0, z: 0 }
+      });
+
+      // Log ít hơn để dễ nhìn
+      if (tick % 20 === 0) {
+        console.log(`[MOVEMENT #${reconnectCount}] Tick ${tick} | Vị trí: ${posX.toFixed(1)}, ${posZ.toFixed(1)}`);
+      }
+    } catch (e) {
+      console.error(`[MOVEMENT ERROR]`, e.message);
+      clearInterval(movementInterval);
+    }
+  }, 650);
+}
+
+// Bắt đầu test loop
+startBot();
+
+console.log('Bot đang test loop liên tục... (sẽ tự reconnect nếu disconnect)');
