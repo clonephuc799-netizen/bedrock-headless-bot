@@ -1,1 +1,2 @@
-# bedrock-headless-bot
+# Minecraft Bedrock Headless Client
+Chạy bằng: `npm start`
