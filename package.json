@@ -1,11 +1,14 @@
 {
   "name": "bedrock-headless-bot",
-  "version": "1.0.0",
-  "description": "Minecraft Bedrock Headless Client - RakNet",
+  "version": "2.0.0",
+  "description": "Minecraft Bedrock Headless Client - Hỗ trợ server có mod",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
     "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bedrock-protocol": "^3.55.0"
   },
   "author": "AI Team",
   "license": "MIT"
