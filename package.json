@@ -1,0 +1,12 @@
+{
+  "name": "bedrock-headless-bot",
+  "version": "1.0.0",
+  "description": "Minecraft Bedrock Headless Client - RakNet",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "author": "AI Team",
+  "license": "MIT"
+}
